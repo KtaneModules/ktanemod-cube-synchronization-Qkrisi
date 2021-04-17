@@ -10,6 +10,7 @@ public partial class CubeSynchronizationModule : KtaneModule
 {
 	public Transform FlashingObjects;
 	public Transform Buttons;
+	public GameObject RegainButton;
 	public TextMesh RNum;
 	public TextMesh FaceNum;
 	public TextMesh Move;
@@ -17,8 +18,10 @@ public partial class CubeSynchronizationModule : KtaneModule
 	public TextMesh DisplayText;
 
 	private static List<Cube> Cubes = new List<Cube>();
-	private static int RawNumber = 0;
+	private static string RawNumber = "";
 	private static int FacesAdded = 0;
+
+	private List<Cube> AllCubes = new List<Cube>();
 
 	private float FacesPerStageRaw = 0f;
 	private int FacesPerStage;
@@ -33,6 +36,8 @@ public partial class CubeSynchronizationModule : KtaneModule
 	private bool solved = false;
 	private static int ReadyModules;
 	private bool ReadyToSolve = false;
+	private int CurrentCubeCalc;
+	private int CurrentCube;
 
 	private static int StageSolves;
 
@@ -65,6 +70,11 @@ public partial class CubeSynchronizationModule : KtaneModule
 		{MovementType.Left, "←"},
 		{MovementType.Right, "→"}
 	};
+
+	private Dictionary<int, int> CubeIndexes = new Dictionary<int, int>()
+	{
+		{0, 0}
+	};
 	
 	[HideInInspector]
 	public int GreenNumber;
@@ -79,11 +89,12 @@ public partial class CubeSynchronizationModule : KtaneModule
 	{
 		base.Start();
 		GetIgnoredModules("Cube Synchronization", new string[] {"Cube Synchronization"});
+		RegainButton.SetActive(false);
 		BombModule.OnActivate += () =>
 		{
 			Cubes.Clear();
 			StageSolves = 0;
-			RawNumber = 0;
+			RawNumber = "";
 			FacesAdded = 0;
 			FacesPerStageRaw += TwitchPlaysScore < 0 ? 0 : TwitchPlaysScore;
 			FacesPerStageRaw += TweaksScore < 0 ? 0 : (float)TweaksScore;
@@ -104,6 +115,21 @@ public partial class CubeSynchronizationModule : KtaneModule
 				solved = true;
 				BombModule.HandlePass();
 			}
+			RegainButton.GetComponent<KMSelectable>().OnInteract += () =>
+			{
+				RegainButton.SetActive(false);
+				Logger(String.Format("Trying to show cube #{0}; {1}", CurrentCube, AllCubes.Count));
+				Cube cube = AllCubes[CurrentCube];
+				foreach (var module in AllModules) module.ShowDisplay(false);
+				int counter = 0;
+				foreach (int face in cube.ShowOrder)
+				{
+					var module = AllModules[counter++ % MaxID];
+					module.QueueRoutine(module.ShowCompletedFace(cube.Faces[face], face+1));
+				}
+				foreach (var module in AllModules) module.QueueRoutine(module.ResetDisplay());
+				return false;
+			};
 		};
 		OnNewStage += (ModuleName, ReadyToSolve) =>
 		{
@@ -112,6 +138,39 @@ public partial class CubeSynchronizationModule : KtaneModule
 				foreach(var module in AllModules) module.HandleNewStage(ReadyToSolve);
 			}
 		};
+	}
+
+	public void QueueRoutine(IEnumerator routine)
+	{
+		QueueRoutines(routine);
+	}
+
+	public void ShowDisplay(bool disable)
+	{
+		FlashingObjects.gameObject.SetActive(!disable);
+		DisplayText.transform.parent.gameObject.SetActive(disable);
+		Buttons.gameObject.SetActive(disable);
+	}
+	public IEnumerator ShowCompletedFace(CubeFace face, int FaceNumber)
+	{
+		RNum.text = face.Number.ToString();
+		Move.text = MovementCharacters[face.UseSecondary ? face.SecondaryBackMovement : face.BackMovement];
+		FaceNum.text = FaceNumber.ToString();
+		StartCoroutine(ChangeColor(RNum.color, c => RNum.color = c));
+		StartCoroutine(ChangeColor(FaceNum.color, c => FaceNum.color = c));
+		StartCoroutine(ChangeColor(Move.color, c => Move.color = c));
+		if (face.UseSecondary)
+		{
+			yield return RotateModule(4.3f, face.BackMovement);
+			yield return new WaitForSeconds(.3f);
+		}
+		else yield return new WaitForSeconds(4.5f);
+	}
+
+	public IEnumerator ResetDisplay()
+	{
+		ShowDisplay(true);
+		yield break;
 	}
 
 	public void HandleNewStage(bool ReadyToSolve)
@@ -139,11 +198,18 @@ public partial class CubeSynchronizationModule : KtaneModule
 		string TempInput = Input + Digit;
 		if (!FinalNumber.StartsWith(TempInput))
 		{
+			if(CurrentCube<AllCubes.Count) RegainButton.SetActive(true);
 			Logger("Invalid digit entered: " + Digit);
 			BombModule.HandleStrike();
 			return false;
 		}
+		RegainButton.SetActive(false);
 		Input = TempInput;
+		if (CubeIndexes.ContainsKey(Input.Length))
+		{
+			CurrentCube = CubeIndexes[Input.Length];
+			Logger(String.Format("Advancing to {0}.", CurrentCube<AllCubes.Count ? "cube #"+(CurrentCube + 1) : "the green number"));
+		}
 		DisplayText.text = Digit;
 		ShowButtons();
 		if (Input == FinalNumber)
@@ -166,28 +232,30 @@ public partial class CubeSynchronizationModule : KtaneModule
 		if (Cubes.Count == 0) Cubes.Add(new Cube());
 		for (int i = 0; i < FacesPerStage; i++)
 		{
-			var CurrentCube = Cubes[Cubes.Count - 1];
+			var _CurrentCube = Cubes[Cubes.Count - 1];
 			int RNumber = RNG.Range(30, 51);
-			var Empties = CurrentCube.Empties;
+			var Empties = _CurrentCube.Empties;
 			if (Empties.Length == 0)
 			{
 				Cubes.Add(new Cube());
-				CurrentCube = Cubes[Cubes.Count - 1];
+				_CurrentCube = Cubes[Cubes.Count - 1];
 				Empties = new int[] {0, 1, 2, 3, 4, 5};
 			}
 			int FaceNumber = Empties[RNG.Range(0, Empties.Length)];
 			MovementType Movement = (MovementType) UseMovements[RNG.Range(0, 6)];
-			CurrentCube.Faces[FaceNumber].Present = true;
-			CurrentCube.Faces[FaceNumber].Number = RNumber;
-			CurrentCube.Faces[FaceNumber].ModuleID = GreenNumber;
-			CurrentCube.Faces[FaceNumber].TwitchID = TwitchID == -1 ? GreenNumber + 2 : TwitchID;
-			CurrentCube.Faces[FaceNumber].BackMovement = Movement;
+			_CurrentCube.ShowOrder.Add(FaceNumber);
+			_CurrentCube.Faces[FaceNumber].Present = true;
+			_CurrentCube.Faces[FaceNumber].Number = RNumber;
+			_CurrentCube.Faces[FaceNumber].ModuleID = GreenNumber;
+			_CurrentCube.Faces[FaceNumber].TwitchID = TwitchID == -1 ? GreenNumber + 2 : TwitchID;
+			_CurrentCube.Faces[FaceNumber].BackMovement = Movement;
 			bool UseSecondary = Movement == MovementType.Clockwise || Movement == MovementType.CounterClockwise;
+			_CurrentCube.Faces[FaceNumber].UseSecondary = UseSecondary;
 			if(UseSecondary)
-				CurrentCube.Faces[FaceNumber].SecondaryBackMovement = (MovementType) UseMovements[RNG.Range(0, 4)];
+				_CurrentCube.Faces[FaceNumber].SecondaryBackMovement = (MovementType) UseMovements[RNG.Range(0, 4)];
 			RNum.text = RNumber.ToString();
 			FaceNum.text = (FaceNumber+1).ToString();
-			Move.text = MovementCharacters[UseSecondary ? CurrentCube.Faces[FaceNumber].SecondaryBackMovement : Movement];
+			Move.text = MovementCharacters[UseSecondary ? _CurrentCube.Faces[FaceNumber].SecondaryBackMovement : Movement];
 			FacesAdded++;
 			StartCoroutine(ChangeColor(RNum.color, c => RNum.color = c));
 			StartCoroutine(ChangeColor(FaceNum.color, c => FaceNum.color = c));
@@ -210,7 +278,7 @@ public partial class CubeSynchronizationModule : KtaneModule
 	private IEnumerator ShowKeypad()
 	{
 		yield return new WaitUntil(() => ReadyModules>=MaxID);
-		FinalNumber = (RawNumber + CalculateStage(StageSolves+1) + GreenNumber).ToString();
+		FinalNumber = (RawNumber + CalculateStage(StageSolves + 1) + GreenNumber);
 		Logger("Ready to solve: "+FinalNumber);
 		FlashingObjects.gameObject.SetActive(false);
 		ShowButtons();
@@ -242,7 +310,6 @@ public partial class CubeSynchronizationModule : KtaneModule
 	
 	IEnumerator RotateModule(float duration, MovementType movement)
     {
-	    float i = 0.0f;
 	    float startRotationy = 360;
 	    float endRotation = 270;
 	    int Multiplier = movement == MovementType.Clockwise ? 1 : -1;
@@ -259,10 +326,10 @@ public partial class CubeSynchronizationModule : KtaneModule
 	    FlashingObjects.localEulerAngles = new Vector3(0, 0, 0);
     }
     
-	private int CalculateStage(int SolvedModules)
+	private string CalculateStage(int SolvedModules)
 	{
 		Logger(String.Format("Calculating stage for {0} modules", SolvedModules));
-		int AllSum = 0;
+		string AllSum = "";
 		foreach (Cube cube in Cubes)
 		{
 			Logger("New cube");
@@ -340,9 +407,12 @@ public partial class CubeSynchronizationModule : KtaneModule
 			Logger("Adding: "+(!CurrentFacePresent && !OppositeFacePresent ? 30 :
 				CurrentFacePresent ? cube.Faces[CurrentFace].FrontNumber :
 				cube.Faces[OppositeFace].BackNumber));
-			AllSum += !CurrentFacePresent && !OppositeFacePresent ? 30 :
+			int n = !CurrentFacePresent && !OppositeFacePresent ? 30 :
 				CurrentFacePresent ? cube.Faces[CurrentFace].FrontNumber :
 				cube.Faces[OppositeFace].BackNumber;
+			AllSum += n.ToString();
+			CubeIndexes.Add(RawNumber.Length + AllSum.Length, ++CurrentCubeCalc);
+			AllCubes.Add(cube);
 		}
 		return AllSum;
 	}

@@ -19,6 +19,7 @@ namespace CubeSynchronization
         public int Number;
         public MovementType BackMovement;
         public MovementType SecondaryBackMovement;
+        public bool UseSecondary;
 
         public int ModuleID;
         public int TwitchID;
@@ -59,6 +60,8 @@ namespace CubeSynchronization
     public class Cube
     {
         public CubeFace[] Faces = new CubeFace[6];
+
+        public List<int> ShowOrder = new List<int>();
 
         public int[] Empties
         {

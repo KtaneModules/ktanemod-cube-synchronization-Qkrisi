@@ -6,11 +6,23 @@ using UnityEngine;
 public partial class CubeSynchronizationModule
 {
     #pragma warning disable 414
-    [HideInInspector] public string TwitchHelpMessage = "Use '!{0} submit <number>' to submit the final number!";
+    [HideInInspector] public string TwitchHelpMessage = "Use '!{0} submit <number>' to submit the final number! Use '!{0} showcube' to show the current cube after a strike!";
     #pragma warning restore 414
     
     IEnumerator ProcessTwitchCommand(string command)
     {
+		if(command.ToLowerInvariant()=="showcube")
+		{
+			if(!RegainButton.activeInHierarchy)
+			{
+				yield return null;
+				yield return "sendtochaterror The stage regain button isn't active!";
+				yield break;
+			}
+			yield return null;
+			RegainButton.GetComponent<KMSelectable>().OnInteract();
+			yield break;
+		}
         var match = Regex.Match(command, @"^submit ([0-9]*)$", RegexOptions.IgnoreCase);
         if (!match.Success)
         {
