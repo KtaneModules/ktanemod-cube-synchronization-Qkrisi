@@ -225,6 +225,7 @@ public partial class CubeSynchronizationModule : KtaneModule
 	{
 		if (FacesAdded == FacesPerStage * MaxID)
 		{
+			Debug.Log("Clearing");
 			RawNumber += CalculateStage(++StageSolves);
 			Cubes.Clear();
 			FacesAdded = 0;
@@ -344,7 +345,10 @@ public partial class CubeSynchronizationModule : KtaneModule
 			Action<MovementType, bool> HandleMove = null;
 			HandleMove = (move, CurrentPresent) =>
 			{
-				Logger("Current face: " + (CurrentFace+1)+" "+cube.Faces[CurrentFace].FrontMovement+" "+cube.Faces[OppositeFace].BackMovement);
+				Logger("Current face, front side: " + (CurrentFace+1)+" "+cube.Faces[CurrentFace].FrontMovement+" "+cube.Faces[CurrentFace].SecondaryFrontMovement);
+				Logger("Opposite face, back side: " + (OppositeFace+1)+" "+cube.Faces[OppositeFace].BackMovement+" "+cube.Faces[OppositeFace].SecondaryBackMovement);
+				Logger("Current face present: " + CurrentFacePresent);
+				Logger("Opposite face present: " + OppositeFacePresent);
 				Logger(String.Format("Top face: {0}, Bottom face: {1}, Right face: {2}, Left face: {3}", TopFace+1, BottomFace+1, RightFace+1, LeftFace+1));
 				switch (move)
 				{
